@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal, Protocol
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-RETRY_STATUS = frozenset({429, 500, 502, 503, 504, 529})
+RETRY_STATUS = frozenset({429, 500, 502, 503, 504, 524, 529})
 MAX_BACKOFF_S = 8.0
 
 

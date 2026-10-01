@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
 import pytest
 
 from swe_agent.models import JobState
@@ -59,3 +62,29 @@ def test_decisions_round_trip_in_insertion_order(store: Store) -> None:
         ("fixable", True, 0.8),
     ]
     assert store.decisions("other") == []
+
+
+def test_store_is_usable_from_many_threads_and_creates_each_job_once(tmp_path: Path) -> None:
+    store = Store(tmp_path / "jobs.db")
+
+    def begin(_: int) -> bool:
+        return store.begin_job("same-key", "u")[1]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        created = list(pool.map(begin, range(32)))
+
+    assert created.count(True) == 1
+
+
+def test_unfinished_jobs_lists_only_non_terminal_states(store: Store) -> None:
+    for key, state in [
+        ("a", JobState.RECEIVED),
+        ("b", JobState.RUNNING),
+        ("c", JobState.DONE),
+        ("d", JobState.ESCALATED),
+        ("e", JobState.FAILED),
+    ]:
+        store.begin_job(key, f"https://github.com/o/r/issues/{key}")
+        store.set_state(key, state)
+
+    assert sorted(j.key for j in store.unfinished_jobs()) == ["a", "b"]

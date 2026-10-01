@@ -196,3 +196,15 @@ def test_noul_outside_unit_interval_is_a_protocol_error(client: JevClient, noul:
 
     with pytest.raises(JevProtocolError, match="malformed"):
         client.ask({}, {"ok": QUESTIONS["ok"]})
+
+
+@respx.mock
+def test_openrouter_gateway_timeout_524_is_retried(client: JevClient, sleeps: list[float]) -> None:
+    route = respx.post(f"{BASE}/v1/systemone").mock(
+        side_effect=[httpx.Response(524), httpx.Response(200, json=GOOD_BODY)]
+    )
+
+    client.ask({}, QUESTIONS)
+
+    assert route.call_count == 2
+    assert sleeps == [0.5]

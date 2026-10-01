@@ -1,7 +1,11 @@
+import functools
 import json
 import sqlite3
+import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Concatenate
 
 from pydantic import BaseModel
 
@@ -50,17 +54,31 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _locked[**P, R](method: Callable[Concatenate["Store", P], R]) -> Callable[Concatenate["Store", P], R]:
+    @functools.wraps(method)
+    def wrapper(self: "Store", *args: P.args, **kwargs: P.kwargs) -> R:
+        with self._lock:  # pyright: ignore[reportPrivateUsage]
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class Store:
     """SQLite persistence for jobs and the Jev decision log."""
 
     def __init__(self, path: Path | str) -> None:
-        self._db = sqlite3.connect(str(path))
+        # One connection shared across threads (FastAPI runs sync handlers in a pool).
+        # The lock serializes every statement; busy timeout covers other processes.
+        self._db = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+        self._lock = threading.RLock()
         self._db.row_factory = sqlite3.Row
         self._db.executescript(_SCHEMA)
 
+    @_locked
     def close(self) -> None:
         self._db.close()
 
+    @_locked
     def begin_job(self, key: str, issue_url: str) -> tuple[Job, bool]:
         """Create the job if `key` is new. The bool is True only for the caller that created it."""
         now = _now()
@@ -74,10 +92,21 @@ class Store:
         assert job is not None
         return job, cursor.rowcount == 1
 
+    @_locked
     def get_job(self, key: str) -> Job | None:
         row = self._db.execute("SELECT * FROM jobs WHERE key = ?", (key,)).fetchone()
         return None if row is None else Job.model_validate(dict(row))
 
+    @_locked
+    def unfinished_jobs(self) -> list[Job]:
+        terminal = (JobState.DONE.value, JobState.ESCALATED.value, JobState.FAILED.value)
+        marks = ", ".join("?" for _ in terminal)
+        rows = self._db.execute(
+            f"SELECT * FROM jobs WHERE state NOT IN ({marks}) ORDER BY created_at", terminal
+        ).fetchall()
+        return [Job.model_validate(dict(r)) for r in rows]
+
+    @_locked
     def set_state(
         self,
         key: str,
@@ -95,6 +124,7 @@ class Store:
         if cursor.rowcount == 0:
             raise KeyError(key)
 
+    @_locked
     def log_decision(self, key: str, question: str, value: object, confidence: float) -> None:
         with self._db:
             self._db.execute(
@@ -103,6 +133,7 @@ class Store:
                 (key, question, json.dumps(value), confidence, _now()),
             )
 
+    @_locked
     def decisions(self, key: str) -> list[DecisionRecord]:
         rows = self._db.execute(
             "SELECT job_key, question, value, confidence, created_at "

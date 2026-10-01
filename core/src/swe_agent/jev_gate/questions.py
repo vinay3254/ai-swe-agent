@@ -104,13 +104,13 @@ def _clip(text: str, limit: int) -> str:
     return text[:limit] + "\n[truncated]"
 
 
-def _noul(answer: object) -> Decision[bool]:
+def as_noul(answer: object) -> Decision[bool]:
     if not isinstance(answer, NoulAnswer):
         raise JevProtocolError(f"expected a noul answer, got {type(answer).__name__}")
     return noul_decision(answer.noul)
 
 
-def _score(answer: object, *, upper: float) -> Decision[float]:
+def as_score(answer: object, *, upper: float) -> Decision[float]:
     if not isinstance(answer, ScoreAnswer):
         raise JevProtocolError(f"expected a score answer, got {type(answer).__name__}")
     if not 0.0 <= answer.score <= upper:  # also rejects NaN
@@ -149,11 +149,11 @@ class JevGate:
         answers = self._asker.ask({"issue": self._issue_state(issue)}, TRIAGE_QUESTIONS)
         return Triage(
             kind=_kind(answers["kind"]),
-            complexity=_score(answers["complexity"], upper=COMPLEXITY_MAX),
-            fixable=_noul(answers["fixable"]),
+            complexity=as_score(answers["complexity"], upper=COMPLEXITY_MAX),
+            fixable=as_noul(answers["fixable"]),
         )
 
     def review(self, issue: Issue, diff: str) -> Review:
         state = {"issue": self._issue_state(issue), "diff": _clip(diff, self._max_diff_chars)}
         answers = self._asker.ask(state, REVIEW_QUESTIONS)
-        return Review(addresses_issue=_noul(answers["addresses"]), risk=_score(answers["risk"], upper=RISK_MAX))
+        return Review(addresses_issue=as_noul(answers["addresses"]), risk=as_score(answers["risk"], upper=RISK_MAX))

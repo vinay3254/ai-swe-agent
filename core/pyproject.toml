@@ -6,7 +6,20 @@ dependencies = [
     "pydantic>=2.12",
     "pydantic-settings>=2.6",
     "httpx>=0.28",
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "typer>=0.15",
 ]
+
+[project.optional-dependencies]
+openhands = [
+    "openhands-sdk>=1.50",
+    "openhands-tools>=1.50",
+    "openhands-workspace>=1.50",
+]
+
+[project.scripts]
+agent = "swe_agent.cli:app"
 
 [dependency-groups]
 dev = [

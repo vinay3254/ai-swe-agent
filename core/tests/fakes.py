@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from concurrent.futures import Executor, Future
 from dataclasses import dataclass, field
 
 from swe_agent.jev_gate.client import JevUnavailable
@@ -98,3 +100,15 @@ class FakeGitHub:
 
 def jev_down() -> JevUnavailable:
     return JevUnavailable("Jev unavailable after 4 attempts: HTTP 529")
+
+
+class InlineExecutor(Executor):
+    """Runs submitted work immediately on the calling thread, so tests see final state."""
+
+    def submit[**P, R](self, fn: Callable[P, R], /, *args: P.args, **kwargs: P.kwargs) -> "Future[R]":
+        future: Future[R] = Future()
+        try:
+            future.set_result(fn(*args, **kwargs))
+        except BaseException as exc:  # noqa: BLE001
+            future.set_exception(exc)
+        return future

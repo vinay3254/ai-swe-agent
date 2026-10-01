@@ -69,6 +69,11 @@ class Pipeline:
         job, created = self._store.begin_job(job_key, ref.url)
         if not created:
             return job
+        return self.run_claimed(ref, job_key)
+
+    def run_claimed(self, ref: IssueRef, job_key: str) -> Job:
+        """Run a job whose row `begin_job` already created. Callers that answer a request
+        before the work finishes (the HTTP API) claim first, then run in the background."""
         try:
             self._execute(ref, job_key)
         except JevError as exc:
@@ -79,6 +84,23 @@ class Pipeline:
         final = self._store.get_job(job_key)
         assert final is not None
         return final
+
+    def recover_interrupted(self) -> list[Job]:
+        """Fail jobs a dead process left unfinished and tell their issues.
+
+        Call once at startup, before accepting work. It assumes one worker process,
+        so every unfinished job belongs to a process that no longer exists.
+        """
+        orphans = self._store.unfinished_jobs()
+        for job in orphans:
+            self._finish(
+                IssueRef.parse(job.issue_url),
+                job.key,
+                JobState.FAILED,
+                "the agent process was interrupted while this job was running",
+                None,
+            )
+        return orphans
 
     def _execute(self, ref: IssueRef, key: str) -> None:
         issue = self._github.fetch_issue(ref)

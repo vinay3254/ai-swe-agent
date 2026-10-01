@@ -263,3 +263,34 @@ def test_out_of_range_jev_answer_escalates_with_needs_human(
     assert job.reason is not None and "malformed" in job.reason
     assert github.labels == ["needs-human"]
     assert runner.calls == [] and github.prs == []
+
+
+def test_run_claimed_executes_a_job_that_was_already_created(
+    pipeline: Pipeline, store: Store, github: FakeGitHub, runner: FakeRunner
+) -> None:
+    store.begin_job("job-1", REF.url)
+
+    job = pipeline.run_claimed(REF, "job-1")
+
+    assert job.state is JobState.DONE
+    assert len(runner.calls) == 1 and len(github.prs) == 1
+
+
+def test_recover_interrupted_fails_orphaned_jobs_and_tells_the_issue(
+    pipeline: Pipeline, store: Store, github: FakeGitHub, runner: FakeRunner
+) -> None:
+    store.begin_job("stuck", REF.url)
+    store.set_state("stuck", JobState.RUNNING)
+    store.begin_job("finished", REF.url)
+    store.set_state("finished", JobState.DONE)
+
+    recovered = pipeline.recover_interrupted()
+
+    assert [j.key for j in recovered] == ["stuck"]
+    stuck = store.get_job("stuck")
+    assert stuck is not None and stuck.state is JobState.FAILED
+    assert stuck.reason is not None and "interrupted" in stuck.reason
+    assert "interrupted" in github.comments[0]
+    finished = store.get_job("finished")
+    assert finished is not None and finished.state is JobState.DONE
+    assert runner.calls == []
