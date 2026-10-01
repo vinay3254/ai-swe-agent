@@ -1,10 +1,13 @@
+import httpx
 import pytest
+import respx
 from fakes import FakeGate, FakeGitHub, FakeRunner, good_result, good_triage, jev_down
 
 from swe_agent.config import Thresholds
 from swe_agent.jev_gate.client import JevAuthError
+from swe_agent.jev_gate.client import JevClient
 from swe_agent.jev_gate.decision import Decision
-from swe_agent.jev_gate.questions import IssueKind, Triage
+from swe_agent.jev_gate.questions import IssueKind, JevGate, Triage
 from swe_agent.models import IssueRef, JobState
 from swe_agent.pipeline import Pipeline
 from swe_agent.store import Store
@@ -223,3 +226,40 @@ def test_github_comment_failure_does_not_hide_the_escalation(
 
     assert job.state is JobState.ESCALATED
     assert job.reason is not None and "Jev unavailable" in job.reason
+
+
+@respx.mock
+def test_out_of_range_jev_answer_escalates_with_needs_human(
+    store: Store, github: FakeGitHub, runner: FakeRunner
+) -> None:
+    answer = {"probabilities": {}, "confidence": 0.9}
+    body = {
+        "model": "m",
+        "answers": {
+            "kind": {"type": "choice", "choice": "bug", **answer},
+            "complexity": {"type": "score", "score": 1.0, "legend": {}, **answer},
+            "fixable": {"type": "noul", "noul": 1.5},
+        },
+    }
+    respx.post("https://api.jev.test/v1/systemone").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    client = JevClient(
+        api_key="k",
+        model="m",
+        base_url="https://api.jev.test",
+        timeout_s=5,
+        max_attempts=1,
+        sleep=lambda _: None,
+    )
+    gate = JevGate(client, max_issue_chars=1000, max_diff_chars=1000)
+    pipeline = Pipeline(
+        store=store, github=github, runner=runner, gate=gate, thresholds=Thresholds()
+    )
+
+    job = pipeline.run(REF, "job-1")
+
+    assert job.state is JobState.ESCALATED
+    assert job.reason is not None and "malformed" in job.reason
+    assert github.labels == ["needs-human"]
+    assert runner.calls == [] and github.prs == []

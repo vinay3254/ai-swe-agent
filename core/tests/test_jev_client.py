@@ -152,3 +152,47 @@ def test_non_json_body_is_a_protocol_error(client: JevClient) -> None:
 
     with pytest.raises(JevProtocolError, match="malformed"):
         client.ask({}, QUESTIONS)
+
+
+SCORE_QUESTION = {"s": Question(type="score", instructions="x", criteria=["a", "b"])}
+
+
+def _score_body(score: str = "0.5", confidence: str = "0.9") -> bytes:
+    return (
+        '{"model":"m","answers":{"s":{"type":"score","score":%s,"legend":{},'
+        '"probabilities":{},"confidence":%s}}}' % (score, confidence)
+    ).encode()
+
+
+@pytest.mark.parametrize("score", ["NaN", "Infinity", "-Infinity", "-1"])
+@respx.mock
+def test_non_finite_or_negative_score_is_a_protocol_error(client: JevClient, score: str) -> None:
+    respx.post(f"{BASE}/v1/systemone").mock(
+        return_value=httpx.Response(200, content=_score_body(score=score))
+    )
+
+    with pytest.raises(JevProtocolError, match="malformed"):
+        client.ask({}, SCORE_QUESTION)
+
+
+@pytest.mark.parametrize("confidence", ["1.5", "-0.1", "NaN"])
+@respx.mock
+def test_confidence_outside_unit_interval_is_a_protocol_error(
+    client: JevClient, confidence: str
+) -> None:
+    respx.post(f"{BASE}/v1/systemone").mock(
+        return_value=httpx.Response(200, content=_score_body(confidence=confidence))
+    )
+
+    with pytest.raises(JevProtocolError, match="malformed"):
+        client.ask({}, SCORE_QUESTION)
+
+
+@pytest.mark.parametrize("noul", [1.5, -0.1])
+@respx.mock
+def test_noul_outside_unit_interval_is_a_protocol_error(client: JevClient, noul: float) -> None:
+    body = {"model": "m", "answers": {"ok": {"type": "noul", "noul": noul}}}
+    respx.post(f"{BASE}/v1/systemone").mock(return_value=httpx.Response(200, json=body))
+
+    with pytest.raises(JevProtocolError, match="malformed"):
+        client.ask({}, {"ok": QUESTIONS["ok"]})

@@ -131,3 +131,24 @@ def test_wrong_answer_type_is_a_protocol_error() -> None:
 
     with pytest.raises(JevProtocolError, match="expected a noul answer"):
         make_gate(FakeAsker(answers)).review(ISSUE, "d")
+
+
+@pytest.mark.parametrize("score", [7.0, -1.0])
+def test_complexity_score_outside_its_scale_is_a_protocol_error(score: float) -> None:
+    answers = triage_answers()
+    answers["complexity"] = ScoreAnswer.model_construct(
+        type="score", score=score, legend={}, probabilities={}, confidence=0.9
+    )
+
+    with pytest.raises(JevProtocolError, match="outside"):
+        make_gate(FakeAsker(answers)).triage(ISSUE)
+
+
+def test_risk_score_outside_its_scale_is_a_protocol_error() -> None:
+    answers = review_answers()
+    answers["risk"] = ScoreAnswer(
+        type="score", score=3.0, legend={}, probabilities={}, confidence=0.9
+    )
+
+    with pytest.raises(JevProtocolError, match="outside"):
+        make_gate(FakeAsker(answers)).review(ISSUE, "d")

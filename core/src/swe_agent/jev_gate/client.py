@@ -31,24 +31,30 @@ class Question(BaseModel, frozen=True):
     criteria: dict[str, str] | list[str] | None = None
 
 
+# Jev replies come from outside the process. Reject NaN, infinities and out-of-range
+# values at the boundary so they cannot slip past a threshold comparison.
+Probability = Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
+Score = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
+
+
 class NoulAnswer(BaseModel):
     type: Literal["noul"]
-    noul: float
+    noul: Probability
 
 
 class ChoiceAnswer(BaseModel):
     type: Literal["choice"]
     choice: str
-    probabilities: dict[str, float]
-    confidence: float
+    probabilities: dict[str, Probability]
+    confidence: Probability
 
 
 class ScoreAnswer(BaseModel):
     type: Literal["score"]
-    score: float
+    score: Score
     legend: dict[str, str]
-    probabilities: dict[str, float]
-    confidence: float
+    probabilities: dict[str, Probability]
+    confidence: Probability
 
 
 Answer = Annotated[NoulAnswer | ChoiceAnswer | ScoreAnswer, Field(discriminator="type")]
