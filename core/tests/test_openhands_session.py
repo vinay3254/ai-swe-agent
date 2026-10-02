@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("openhands.sdk")
@@ -55,3 +57,22 @@ def test_base_url_defaults_to_none_for_direct_providers() -> None:
     agent = OpenHandsSession(model="m", api_key="k", test_command=None).build_agent()
 
     assert agent.llm.base_url is None
+
+
+def test_open_for_sandbox_makes_clone_writable_without_changing_exec_bit(tmp_path: Path) -> None:
+    from swe_agent.openhands_session import open_for_sandbox
+
+    (tmp_path / "sub").mkdir()
+    plain = tmp_path / "sub" / "a.py"
+    plain.write_text("x")
+    plain.chmod(0o644)
+    script = tmp_path / "run.sh"
+    script.write_text("x")
+    script.chmod(0o755)
+    tmp_path.chmod(0o755)
+
+    open_for_sandbox(tmp_path)
+
+    assert plain.stat().st_mode & 0o777 == 0o666
+    assert script.stat().st_mode & 0o777 == 0o777
+    assert tmp_path.stat().st_mode & 0o777 == 0o777

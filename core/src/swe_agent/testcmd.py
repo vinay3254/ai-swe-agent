@@ -16,4 +16,7 @@ def detect_test_command(workdir: Path) -> str | None:
     for marker, command in _MARKERS:
         if (workdir / marker).exists():
             return command
+    # A bare Python repo with pytest-style files and no packaging metadata.
+    if any(workdir.glob("test_*.py")) or any(workdir.glob("*_test.py")) or (workdir / "tests").is_dir():
+        return "python -m pytest -q"
     return None

@@ -14,8 +14,19 @@ from typing import Any
 from swe_agent.runner import AgentRun
 from swe_agent.testcmd import detect_test_command
 
-CONTAINER_DIR = "/workspace"
+# Not /workspace itself: the agent server keeps its conversation state under /workspace, and
+# that must stay out of the clone so it cannot end up in the diff.
+CONTAINER_DIR = "/workspace/project"
 DEFAULT_SERVER_IMAGE = "ghcr.io/openhands/agent-server:latest-python"
+
+
+def open_for_sandbox(workdir: Path) -> None:
+    """The server image runs as uid 10001, not the host user. Make the clone writable for it.
+    Git tracks only the executable bit, so adding rw on files does not show up in the diff."""
+    for path in (workdir, *workdir.rglob("*")):
+        if path.is_symlink():
+            continue
+        path.chmod(path.stat().st_mode | 0o666 | (0o111 if path.is_dir() else 0))
 
 
 def agent_completed(status: str) -> bool:
@@ -63,6 +74,7 @@ class OpenHandsSession:
         from openhands.workspace import DockerWorkspace
 
         test_command = self._test_command or detect_test_command(workdir)
+        open_for_sandbox(workdir)
         with DockerWorkspace(
             server_image=self._server_image,
             working_dir=CONTAINER_DIR,

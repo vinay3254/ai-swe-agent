@@ -13,6 +13,7 @@ from swe_agent.testcmd import detect_test_command
         ({"package.json": "{}"}, "npm test --silent"),
         ({"Cargo.toml": ""}, "cargo test"),
         ({"go.mod": ""}, "go test ./..."),
+        ({"test_calc.py": ""}, "python -m pytest -q"),
         ({"README.md": ""}, None),
     ],
 )
