@@ -6,3 +6,7 @@ __pycache__/
 .agent-work/
 
 .env
+
+# Docs markdown files
+docs/**/*.md
+docs/*.md
