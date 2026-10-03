@@ -9,7 +9,7 @@ Autonomous issue-fixing and license-compliance watchdog powered by Claude, OpenH
 
 ## How It Works
 
-### 1. Issue Fixer Workflow
+### 1. End-to-End Issue Fixer Workflow
 
 ```mermaid
 flowchart TD
@@ -27,7 +27,33 @@ flowchart TD
     Review -- "Tests Pass & Low Risk" --> ReadyPR["Open Ready PR"]
 ```
 
-### 2. Watchdog Workflow
+### 2. Gateway Ingestion & Verification
+
+```mermaid
+flowchart LR
+    Hook["GitHub Webhook"] --> HMAC{"Verify HMAC-SHA256"}
+    HMAC -- "Invalid" --> Reject["401 Unauthorized"]
+    HMAC -- "Valid" --> Filter{"Event Filter"}
+    Filter -- "Not ai-fix" --> Ignored["Ignored"]
+    Filter -- "Labeled ai-fix" --> Key["Deduplicate (Issue + Delivery ID)"]
+    Key --> Core["Core API (POST /jobs/claim)"]
+    Core --> Ack["Post Status Comment"]
+```
+
+### 3. Docker Sandbox & Test Execution
+
+```mermaid
+flowchart TD
+    Req["Run Request"] --> Clone["Clone Target Repo"]
+    Clone --> Perms["Adjust Permissions (UID 10001 Writable)"]
+    Perms --> Detect["Detect Test Runner (pytest / npm / cargo / go)"]
+    Detect --> Mount["Mount /workspace/project (Isolate Agent State)"]
+    Mount --> Agent["Run OpenHands Fix Loop"]
+    Agent --> Test["Execute Test Suite in Sandbox"]
+    Test --> Diff["Extract Git Diff & Transcript"]
+```
+
+### 4. Watchdog Compliance Pipeline
 
 ```mermaid
 flowchart LR
@@ -37,6 +63,18 @@ flowchart LR
     Store --> Human{"Human Review"}
     Human -- "Approve" --> Notice["Post Issue Notice / Draft DMCA"]
     Human -- "Dismiss" --> Closed["Case Closed"]
+```
+
+### 5. API Contract Drift & CI Pipeline
+
+```mermaid
+flowchart LR
+    Core["FastAPI Core"] --> Export["Export openapi.json"]
+    Export --> Gen["openapi-typescript"]
+    Gen --> Types["gateway/src/generated/core.ts"]
+    Types --> Drift{"check-drift.sh"}
+    Drift -- "Diff Detected" --> Fail["CI Failure (Contract Drift)"]
+    Drift -- "In Sync" --> Pass["CI Passed"]
 ```
 
 ---
